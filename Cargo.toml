@@ -1,0 +1,23 @@
+[package]
+name = "tsconfig-includes"
+version = "0.0.0-semantic-release-managed"
+edition = "2021"
+authors = ["Eric Crosson <eric.s.crosson@utexas.edu>"]
+license = "ISC OR Apache-2.0"
+description = "Enumerate files used in the TypeScript compilation"
+readme = "README.md"
+homepage = "https://github.com/typescript-tools/tsconfig-includes"
+keywords = ["cli", "typescript", "monorepo"]
+categories = ["command-line-utilities"]
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+anyhow = "1.0.66"
+log = "0.4.17"
+rayon = "1.5.3"
+thiserror = "1.0.37"
+typescript_tools = "4.3.0"
+
+[dev-dependencies]
+env_logger = { version = "0.9.3", default-features = false }

@@ -1,0 +1,16 @@
+/.direnv/
+/.pre-commit-config.yaml
+/target/
+
+
+# Added by cargo
+
+/target
+
+
+# Added by cargo
+#
+# already existing elements were commented out
+
+#/target
+/Cargo.lock
