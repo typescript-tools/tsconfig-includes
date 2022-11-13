@@ -13,11 +13,11 @@ categories = ["command-line-utilities"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-anyhow = "1.0.66"
-log = "0.4.17"
-rayon = "1.5.3"
-thiserror = "1.0.37"
-typescript_tools = "4.3.0"
+anyhow = "=1.0.66"
+log = "=0.4.17"
+rayon = "=1.5.3"
+thiserror = "=1.0.37"
+typescript_tools = "=4.3.0"
 
 [dev-dependencies]
-env_logger = { version = "0.9.3", default-features = false }
+env_logger = { version = "=0.9.3", default-features = false }
