@@ -9,6 +9,15 @@ readme = "README.md"
 homepage = "https://github.com/typescript-tools/tsconfig-includes"
 keywords = ["cli", "typescript", "monorepo"]
 categories = ["command-line-utilities"]
+exclude = [
+  "/.envrc",
+  "/.github",
+  "/.gitignore",
+  "/.releaserc.json",
+  "/CHANGELOG.md",
+  "/flake.{lock,nix}",
+  "/package*.json"
+]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
