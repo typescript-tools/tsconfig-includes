@@ -1,4 +1,7 @@
-use std::{path::Path, process::Command};
+use std::{
+    path::{Path, PathBuf},
+    process::Command,
+};
 
 use log::{debug, trace};
 use rayon::prelude::*;
@@ -9,7 +12,7 @@ mod find_up;
 
 use crate::error::Error;
 
-fn list_included_files(tsconfig: &Path) -> Result<Vec<String>, Error> {
+fn list_included_files(tsconfig: &Path) -> Result<Vec<PathBuf>, Error> {
     let string = String::from_utf8(
         Command::new("tsc")
             .arg("--listFilesOnly")
@@ -22,7 +25,7 @@ fn list_included_files(tsconfig: &Path) -> Result<Vec<String>, Error> {
         .split('\n')
         .filter(|s| !s.is_empty())
         .filter(|s| !s.starts_with("/nix/store/"))
-        .map(|s| s.to_owned())
+        .map(|s| PathBuf::from(s))
         .collect())
 }
 
@@ -47,7 +50,7 @@ fn list_included_files(tsconfig: &Path) -> Result<Vec<String>, Error> {
 ///
 /// [listfilesonly]: https://www.typescriptlang.org/docs/handbook/compiler-options.html#compiler-options
 /// [tsconfig exclude]: https://www.typescriptlang.org/tsconfig#exclude
-pub fn tsconfig_includes(tsconfig: &Path) -> Result<Vec<String>, Error> {
+pub fn tsconfig_includes(tsconfig: &Path) -> Result<Vec<PathBuf>, Error> {
     let monorepo_root = find_up::find_file(tsconfig, "lerna.json").ok_or_else(|| {
         Error::TypescriptProjectNotInMonorepo {
             filename: tsconfig.to_string_lossy().into_owned(),
@@ -89,7 +92,7 @@ pub fn tsconfig_includes(tsconfig: &Path) -> Result<Vec<String>, Error> {
             .collect::<Vec<_>>()
     );
 
-    let included_files: Vec<String> = transitive_internal_dependencies_inclusive
+    let included_files: Vec<PathBuf> = transitive_internal_dependencies_inclusive
         .into_par_iter()
         .map(|manifest| {
             // This relies on the assumption that tsconfig.json is always the name of the tsconfig file
