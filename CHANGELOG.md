@@ -1,3 +1,10 @@
+## [2.0.1](https://github.com/typescript-tools/tsconfig-includes/compare/v2.0.0...v2.0.1) (2022-11-19)
+
+
+### Bug Fixes
+
+* **deps:** update rust crate rayon to 1.6.0 ([471eb4b](https://github.com/typescript-tools/tsconfig-includes/commit/471eb4b8ef48c810b7bceed1b678a95464593554))
+
 # [2.0.0](https://github.com/typescript-tools/tsconfig-includes/compare/v1.0.0...v2.0.0) (2022-11-15)
 
 
