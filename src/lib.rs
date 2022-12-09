@@ -80,7 +80,7 @@ pub fn tsconfig_includes(tsconfig: &Path) -> Result<Vec<PathBuf>, Error> {
 
     // Enumerate internal dependencies (exclusive)
     let mut transitive_internal_dependencies_inclusive = package_manifest
-        .transitive_internal_dependency_package_names(&package_manifests_by_package_name);
+        .transitive_internal_dependency_package_names_exclusive(&package_manifests_by_package_name);
     // Make this list inclusive of the target package
     transitive_internal_dependencies_inclusive.push(&package_manifest);
 
