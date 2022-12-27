@@ -24,6 +24,7 @@ jobs:
   ### Perform the semantic-release
   release:
     runs-on: ubuntu-latest
+    name: Release
 
     steps:
       - name: Checkout
