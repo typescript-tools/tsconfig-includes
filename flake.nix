@@ -46,7 +46,7 @@
 
       # Common derivation arguments used for all builds
       commonArgs = {
-        src = ./.;
+        src = craneLib.cleanCargoSource ./.;
 
         # Add extra inputs here or any other derivation settings
         # doCheck = true;
@@ -55,20 +55,11 @@
           fenix-channel.clippy
           nodePackages.typescript
         ];
-
-        nativeBuildInputs = with pkgs; [
-        ];
       };
 
       # Build *just* the cargo dependencies, so we can reuse
       # all of that work (e.g. via cachix) when running in CI
-      cargoArtifacts = craneLib.buildDepsOnly (commonArgs
-        // {
-          # Additional arguments specific to this derivation can be added here.
-          # Be warned that using `//` will not do a deep copy of nested
-          # structures
-          pname = "rust-implementation-deps";
-        });
+      cargoArtifacts = craneLib.buildDepsOnly commonArgs;
 
       # Run clippy (and deny all warnings) on the crate source,
       # resuing the dependency artifacts (e.g. from build scripts or
@@ -102,6 +93,7 @@
         src = ./.;
         hooks = {
           alejandra.enable = true;
+          prettier.enable = true;
         };
       };
     in {
@@ -117,15 +109,13 @@
       devShells = {
         default = nixpkgs.legacyPackages.${system}.mkShell {
           buildInputs = commonArgs.buildInputs;
-          nativeBuildInputs = with pkgs;
-            commonArgs.nativeBuildInputs
-            ++ [
-              fenix-toolchain
-              fenix.packages.${system}.rust-analyzer
+          nativeBuildInputs = [
+            fenix-toolchain
+            fenix.packages.${system}.rust-analyzer
 
-              pkgs.nodejs
-              pkgs.rnix-lsp
-            ];
+            pkgs.nodejs
+            pkgs.rnix-lsp
+          ];
 
           inherit (self.checks.${system}.pre-commit-check) shellHook;
         };
