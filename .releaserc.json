@@ -3,14 +3,12 @@
     "@semantic-release/commit-analyzer",
     "@semantic-release/release-notes-generator",
     "@semantic-release/changelog",
-    "@semantic-release/git",
+    "@semantic-release-cargo/semantic-release-cargo",
     "@semantic-release/github",
     [
-      "@semantic-release/exec",
+      "@semantic-release/git",
       {
-        "verifyContitionsCmd": "semantic-release-rust verify-conditions",
-        "prepareCmd": "semantic-release-rust prepare ${nextRelease.version}",
-        "publishCmd": "semantic-release-rust publish"
+        "assets": ["CHANGELOG.md", "Cargo.toml", "Cargo.lock"]
       }
     ]
   ]
