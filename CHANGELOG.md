@@ -1,3 +1,10 @@
+## [2.0.2](https://github.com/typescript-tools/tsconfig-includes/compare/v2.0.1...v2.0.2) (2022-12-27)
+
+
+### Bug Fixes
+
+* **deps:** update rust crate typescript_tools to v5 ([4d61697](https://github.com/typescript-tools/tsconfig-includes/commit/4d616976adde53fa4280ed9f5f31db91eb23a39d))
+
 ## [2.0.2](https://github.com/typescript-tools/tsconfig-includes/compare/v2.0.1...v2.0.2) (2022-12-09)
 
 
