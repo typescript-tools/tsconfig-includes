@@ -1,3 +1,10 @@
+## [2.0.3](https://github.com/typescript-tools/tsconfig-includes/compare/v2.0.2...v2.0.3) (2023-01-09)
+
+
+### Bug Fixes
+
+* **ci:** use rust-action for releases ([0ee6813](https://github.com/typescript-tools/tsconfig-includes/commit/0ee681378f135091040ae78379054ec75e75e9a5))
+
 ## [2.0.2](https://github.com/typescript-tools/tsconfig-includes/compare/v2.0.1...v2.0.2) (2022-12-27)
 
 

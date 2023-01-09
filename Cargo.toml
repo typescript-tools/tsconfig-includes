@@ -1,6 +1,6 @@
 [package]
 name = "tsconfig-includes"
-version ="2.0.2"
+version = "2.0.3"
 edition = "2021"
 authors = ["Eric Crosson <eric.s.crosson@utexas.edu>"]
 license = "ISC OR Apache-2.0"
