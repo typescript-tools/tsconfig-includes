@@ -1,3 +1,10 @@
+## [2.0.4](https://github.com/typescript-tools/tsconfig-includes/compare/v2.0.3...v2.0.4) (2023-01-14)
+
+
+### Bug Fixes
+
+* **deps:** migrate to semantic-release-action/next-release-version ([3652c49](https://github.com/typescript-tools/tsconfig-includes/commit/3652c49ebf65b562a7b58e0a700e98da935b7c10))
+
 ## [2.0.3](https://github.com/typescript-tools/tsconfig-includes/compare/v2.0.2...v2.0.3) (2023-01-09)
 
 
