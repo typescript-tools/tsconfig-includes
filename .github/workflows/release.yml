@@ -14,6 +14,6 @@ on:
 
 jobs:
   release:
-    uses: semantic-release-action/rust/.github/workflows/release-library.yml@v2
+    uses: semantic-release-action/rust/.github/workflows/release-library.yml@v4
     secrets:
       cargo-registry-token: ${{ secrets.CARGO_REGISTRY_TOKEN }}
