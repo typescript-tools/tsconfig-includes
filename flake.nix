@@ -115,7 +115,6 @@
             fenix.packages.${system}.rust-analyzer
 
             pkgs.nodejs
-            pkgs.rnix-lsp
           ];
 
           inherit (self.checks.${system}.pre-commit-check) shellHook;
