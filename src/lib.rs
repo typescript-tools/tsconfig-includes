@@ -73,7 +73,6 @@ pub fn tsconfig_includes(tsconfig: &Path) -> Result<Vec<PathBuf>, Error> {
         .filter(|manifest| &target_package_manifest == &monorepo_root.join(manifest.path()))
         .take(1)
         .next()
-        // TODO: list the assumption here
         .expect("Expected project to reside in monorepo");
 
     debug!("package_manifest: {:?}", package_manifest);
