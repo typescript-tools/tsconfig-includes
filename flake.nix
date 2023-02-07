@@ -7,10 +7,6 @@
       inputs.nixpkgs.follows = "nixpkgs";
       inputs.flake-utils.follows = "flake-utils";
     };
-    fenix = {
-      url = "github:nix-community/fenix";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
     pre-commit-hooks = {
       url = "github:cachix/pre-commit-hooks.nix";
       inputs.flake-utils.follows = "flake-utils";
@@ -22,7 +18,6 @@
     self,
     nixpkgs,
     crane,
-    fenix,
     flake-utils,
     pre-commit-hooks,
     ...
@@ -32,29 +27,11 @@
         inherit system;
       };
 
-      fenix-channel = fenix.packages.${system}.latest;
-      fenix-toolchain = fenix-channel.withComponents [
-        "rustc"
-        "cargo"
-        "clippy"
-        "rust-analysis"
-        "rust-src"
-        "rustfmt"
-      ];
-
-      craneLib = crane.lib.${system}.overrideToolchain fenix-toolchain;
+      craneLib = crane.lib.${system};
 
       # Common derivation arguments used for all builds
       commonArgs = {
         src = craneLib.cleanCargoSource ./.;
-
-        # Add extra inputs here or any other derivation settings
-        # doCheck = true;
-        buildInputs = with pkgs; [
-          fenix-channel.rustc
-          fenix-channel.clippy
-          nodePackages.typescript
-        ];
       };
 
       # Build *just* the cargo dependencies, so we can reuse
@@ -109,11 +86,8 @@
       };
       devShells = {
         default = nixpkgs.legacyPackages.${system}.mkShell {
-          buildInputs = commonArgs.buildInputs;
           nativeBuildInputs = [
-            fenix-toolchain
-            fenix.packages.${system}.rust-analyzer
-
+            pkgs.cargo
             pkgs.nodejs
           ];
 
