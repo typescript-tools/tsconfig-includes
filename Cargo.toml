@@ -19,8 +19,6 @@ exclude = [
   "/package*.json"
 ]
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
 anyhow = "1.0.66"
 log = "0.4.17"
