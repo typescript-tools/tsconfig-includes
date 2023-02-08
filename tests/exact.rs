@@ -4,7 +4,11 @@ use std::path::PathBuf;
 use tsconfig_includes::{tsconfig_includes_by_package_name, Calculation};
 
 fn check(tsconfig: &str, expected: &[(&str, &str)]) {
-    match tsconfig_includes_by_package_name(&PathBuf::from(tsconfig), Calculation::Exact) {
+    match tsconfig_includes_by_package_name(
+        &PathBuf::from("test-data/happy-path"),
+        &[&PathBuf::from(tsconfig)],
+        Calculation::Exact,
+    ) {
         Ok(actual) => {
             let expected = expected.iter().fold(
                 HashMap::new(),
@@ -25,9 +29,9 @@ fn check(tsconfig: &str, expected: &[(&str, &str)]) {
 }
 
 #[test]
-fn list_grouped_estimate_happy_path_dependencies_bar() {
+fn list_grouped_exact_happy_path_dependencies_bar() {
     check(
-        "test-data/happy-path/packages/bar/tsconfig.json",
+        "packages/bar/tsconfig.json",
         &[
             ("bar", "packages/bar/src/bin.ts"),
             ("bar", "packages/bar/src/index.ts"),
@@ -40,9 +44,9 @@ fn list_grouped_estimate_happy_path_dependencies_bar() {
 }
 
 #[test]
-fn list_grouped_estimate_happy_path_dependencies_foo() {
+fn list_grouped_exact_happy_path_dependencies_foo() {
     check(
-        "test-data/happy-path/packages/foo/tsconfig.json",
+        "packages/foo/tsconfig.json",
         &[
             ("foo", "packages/foo/src/data.json"),
             ("foo", "packages/foo/src/index.ts"),

@@ -43,14 +43,13 @@
 //! [tsconfig exclude]: https://www.typescriptlang.org/tsconfig#exclude
 
 #![forbid(unsafe_code)]
-#![feature(absolute_path)]
 #![deny(warnings, missing_docs)]
 
 use std::{
     collections::{HashMap, HashSet},
     fs::File,
     io::Read,
-    path::{self, Path, PathBuf},
+    path::{Path, PathBuf},
     process::Command,
 };
 
@@ -61,7 +60,6 @@ use serde::Deserialize;
 use typescript_tools::{configuration_file::ConfigurationFile, monorepo_manifest};
 
 mod error;
-mod find_up;
 
 use crate::error::Error;
 
@@ -94,6 +92,22 @@ struct TypescriptConfig {
     include: Vec<String>,
 }
 
+// This gives us a way to look up the typescript-tools PackageManifest
+// from the path to a package's tsconfig.json file, but it does incur
+// a runtime penalty of reading this information from disk again.
+//
+// It's a definite hack, but it unblocks today.
+#[derive(Debug, Deserialize)]
+struct PackageManifest {
+    name: String,
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+struct TypescriptPackage {
+    scoped_package_name: String,
+    tsconfig_file: PathBuf,
+}
+
 fn glob_file_extension(glob: &str) -> Option<String> {
     if glob.ends_with('*') {
         return None;
@@ -103,7 +117,7 @@ fn glob_file_extension(glob: &str) -> Option<String> {
 
 fn is_monorepo_file(monorepo_root: &Path, file: &Path) -> bool {
     for ancestor in file.ancestors() {
-        if ancestor == monorepo_root {
+        if ancestor.ends_with(monorepo_root) {
             return true;
         }
     }
@@ -127,6 +141,29 @@ where
     )
 }
 
+fn remove_relative_path_prefix_from_absolute_path(
+    prefix: &Path,
+    absolute_path: &Path,
+) -> Result<PathBuf, Error> {
+    for ancestor in absolute_path.ancestors() {
+        if ancestor.ends_with(prefix) {
+            return Ok(absolute_path
+                .strip_prefix(ancestor)
+                .map(|path| path.to_owned())
+                .map_err(|err| Error::RelativePathStripError {
+                    source: err,
+                    absolute_path: absolute_path.to_path_buf(),
+                })?);
+        }
+    }
+
+    eprintln!(
+        "Absolute path {:?} did not contain relative-path prefix {:?}",
+        absolute_path, prefix,
+    );
+    panic!();
+}
+
 /// Invoke the TypeScript compiler with the [listFilesOnly] flag to enumerate
 /// the files included in the compilation process.
 fn tsconfig_includes_exact(monorepo_root: &Path, tsconfig: &Path) -> Result<Vec<PathBuf>, Error> {
@@ -147,8 +184,9 @@ fn tsconfig_includes_exact(monorepo_root: &Path, tsconfig: &Path) -> Result<Vec<
         })
         .filter_map(|source_file| {
             if is_monorepo_file(monorepo_root, &source_file) {
-                let relative_path = pathdiff::diff_paths(&source_file, monorepo_root);
-                relative_path
+                let relative_path =
+                    remove_relative_path_prefix_from_absolute_path(monorepo_root, &source_file);
+                Some(relative_path.unwrap())
             } else {
                 None
             }
@@ -224,10 +262,10 @@ fn tsconfig_includes_estimate(
                     return None;
                 }
 
-                let relative_path = pathdiff::diff_paths(path, monorepo_root);
-                Some(relative_path.ok_or_else(|| Error::RelativePathError {
-                    filename: path.to_owned(),
-                }))
+                Some(Ok(path
+                    .strip_prefix(monorepo_root)
+                    .map(|path| path.to_owned())
+                    .unwrap()))
             })
             .collect::<Result<Vec<_>, Error>>()?;
 
@@ -237,77 +275,85 @@ fn tsconfig_includes_estimate(
 /// Enumerate source code files used by the TypeScript compiler during
 /// compilation. The return value is a list of alphabetically-sorted relative
 /// paths from the monorepo root, grouped by scoped package name.
+///
+/// - `monorepo_root` may be an absolute path
+/// - `tsconfig_files` should be relative paths from the monorepo root
 pub fn tsconfig_includes_by_package_name(
-    tsconfig: &Path,
+    monorepo_root: &Path,
+    tsconfig_files: &[&Path],
     calculation_type: Calculation,
 ) -> Result<HashMap<String, Vec<PathBuf>>, Error> {
-    let tsconfig = path::absolute(tsconfig).expect(&format!(
-        "Should be able to convert parameter `tsconfig` ({:?}) into an absolute path",
-        tsconfig,
-    ));
-    debug!("tsconfig absolute path is {:?}", tsconfig);
-
-    let monorepo_root = find_up::find_file(&tsconfig, "lerna.json").ok_or_else(|| {
-        Error::TypescriptProjectNotInMonorepo {
-            filename: tsconfig.to_string_lossy().into_owned(),
-        }
-    })?;
-    debug!("monorepo_root: {:?}", monorepo_root);
-
-    // This relies on an assumption that the package's package.json and tsconfig.json
-    // live in the same directory (the package root).
-    let target_package_manifest = tsconfig.parent().unwrap().join("package.json");
-    debug!("target package manifest: {:?}", target_package_manifest);
-
     let lerna_manifest = monorepo_manifest::MonorepoManifest::from_directory(&monorepo_root)?;
     let package_manifests_by_package_name = lerna_manifest.package_manifests_by_package_name()?;
     trace!("{:?}", lerna_manifest);
 
-    let package_manifest = lerna_manifest
-        .internal_package_manifests()?
+    // As relative path from monorepo root
+    let transitive_internal_dependency_tsconfigs_inclusive_to_enumerate: HashSet<
+        TypescriptPackage,
+    > = tsconfig_files
+        .iter()
+        .map(|tsconfig_file| -> Result<Vec<TypescriptPackage>, Error> {
+            let package_manifest_file = tsconfig_file
+                .parent()
+                .expect("No package should exist in the monorepo root")
+                .join("package.json");
+            let PackageManifest {
+                name: package_manifest_name,
+            } = read_json_from_file(&monorepo_root.join(package_manifest_file))?;
+            let package_manifest = package_manifests_by_package_name
+                .get(&package_manifest_name)
+                .expect(&format!(
+                    "tsconfig {:?} should belong to a package in the lerna monorepo",
+                    tsconfig_file
+                ));
+
+            let transitive_internal_dependencies_inclusive = {
+                // Enumerate internal dependencies (exclusive)
+                let mut packages = package_manifest
+                    .transitive_internal_dependency_package_names_exclusive(
+                        &package_manifests_by_package_name,
+                    );
+                // Make this list inclusive of the target package
+                packages.push(&package_manifest);
+                packages
+            };
+
+            Ok(transitive_internal_dependencies_inclusive
+                .iter()
+                .map(|package_manifest| TypescriptPackage {
+                    scoped_package_name: package_manifest.contents.name.clone(),
+                    tsconfig_file: package_manifest
+                        .path()
+                        .parent()
+                        .unwrap()
+                        .join("tsconfig.json"),
+                })
+                .collect())
+        })
+        .collect::<Result<Vec<_>, _>>()?
         .into_iter()
-        .filter(|manifest| &target_package_manifest == &monorepo_root.join(manifest.path()))
-        .take(1)
-        .next()
-        .expect("Expected project to reside in monorepo");
-
-    debug!("package_manifest: {:?}", package_manifest);
-
-    // Enumerate internal dependencies (exclusive)
-    let transitive_internal_dependencies_inclusive = {
-        let mut packages = package_manifest.transitive_internal_dependency_package_names_exclusive(
-            &package_manifests_by_package_name,
-        );
-        // Make this list inclusive of the target package
-        packages.push(&package_manifest);
-        packages
-    };
+        .flatten()
+        .collect();
 
     debug!(
-        "transitive_internal_dependencies_inclusive: {:?}",
-        transitive_internal_dependencies_inclusive
-            .iter()
-            .map(|manifest| manifest.contents.name.clone())
-            .collect::<Vec<_>>()
+        "transitive_internal_dependency_tsconfigs_inclusive_to_enumerate: {:?}",
+        transitive_internal_dependency_tsconfigs_inclusive_to_enumerate
     );
 
-    let included_files: HashMap<String, Vec<PathBuf>> = transitive_internal_dependencies_inclusive
-        .into_par_iter()
-        .map(|manifest| -> Result<(_, _), Error> {
-            // This relies on the assumption that tsconfig.json is always the name of the tsconfig file
-            let tsconfig = &monorepo_root
-                .join(manifest.path())
-                .parent()
-                .unwrap()
-                .join("tsconfig.json");
-            let mut included_files = match calculation_type {
-                Calculation::Estimate => tsconfig_includes_estimate(&monorepo_root, tsconfig),
-                Calculation::Exact => tsconfig_includes_exact(&monorepo_root, tsconfig),
-            }?;
-            included_files.sort_unstable();
-            Ok((manifest.contents.name.clone(), included_files))
-        })
-        .collect::<Result<HashMap<_, _>, _>>()?;
+    let included_files: HashMap<String, Vec<PathBuf>> =
+        transitive_internal_dependency_tsconfigs_inclusive_to_enumerate
+            .into_par_iter()
+            .map(|package| -> Result<(_, _), Error> {
+                // This relies on the assumption that tsconfig.json is always the name of the tsconfig file
+                let tsconfig = &monorepo_root.join(package.tsconfig_file);
+                let mut included_files = match calculation_type {
+                    Calculation::Estimate => tsconfig_includes_estimate(&monorepo_root, tsconfig),
+                    Calculation::Exact => tsconfig_includes_exact(&monorepo_root, tsconfig),
+                }?;
+                included_files.sort_unstable();
+                Ok((package.scoped_package_name, included_files))
+            })
+            .collect::<Result<HashMap<_, _>, _>>()?;
 
     debug!("tsconfig_includes: {:?}", included_files);
     Ok(included_files)

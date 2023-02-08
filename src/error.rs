@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{PathBuf, StripPrefixError};
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -34,5 +34,12 @@ pub enum Error {
     TypescriptCompilerResponseParseError {
         #[from]
         source: std::string::FromUtf8Error,
+    },
+
+    #[error("Error resolving absolute path to relative path {absolute_path:?}")]
+    RelativePathStripError {
+        #[source]
+        source: StripPrefixError,
+        absolute_path: PathBuf,
     },
 }

@@ -1,6 +1,7 @@
 {
   "include": ["src/**/*", "src/**/*.json", "test/**/*"],
   "compilerOptions": {
+    "outDir": "dist",
     "composite": true,
     "resolveJsonModule": true
   },
