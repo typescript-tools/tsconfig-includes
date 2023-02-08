@@ -7,3 +7,5 @@ on:
 jobs:
   test:
     uses: semantic-release-action/rust/.github/workflows/ci.yml@v4
+    with:
+      toolchain: nightly
