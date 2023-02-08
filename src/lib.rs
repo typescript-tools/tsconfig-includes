@@ -231,7 +231,6 @@ pub fn tsconfig_includes(
                 .parent()
                 .unwrap()
                 .join("tsconfig.json");
-            // list_included_files(tsconfig)
             match calculation_type {
                 Calculation::Estimate => tsconfig_includes_estimate(&monorepo_root, tsconfig),
                 Calculation::Exact => tsconfig_includes_exact(&monorepo_root, tsconfig),
