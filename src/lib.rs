@@ -278,12 +278,17 @@ fn tsconfig_includes_estimate(
 ///
 /// - `monorepo_root` may be an absolute path
 /// - `tsconfig_files` should be relative paths from the monorepo root
-pub fn tsconfig_includes_by_package_name(
-    monorepo_root: &Path,
-    tsconfig_files: &[&Path],
+pub fn tsconfig_includes_by_package_name<P, Q>(
+    monorepo_root: P,
+    tsconfig_files: &[Q],
     calculation_type: Calculation,
-) -> Result<HashMap<String, Vec<PathBuf>>, Error> {
-    let lerna_manifest = monorepo_manifest::MonorepoManifest::from_directory(&monorepo_root)?;
+) -> Result<HashMap<String, Vec<PathBuf>>, Error>
+where
+    P: AsRef<Path> + Sync,
+    Q: AsRef<Path>,
+{
+    let lerna_manifest =
+        monorepo_manifest::MonorepoManifest::from_directory(monorepo_root.as_ref())?;
     let package_manifests_by_package_name = lerna_manifest.package_manifests_by_package_name()?;
     trace!("{:?}", lerna_manifest);
 
@@ -294,17 +299,18 @@ pub fn tsconfig_includes_by_package_name(
         .iter()
         .map(|tsconfig_file| -> Result<Vec<TypescriptPackage>, Error> {
             let package_manifest_file = tsconfig_file
+                .as_ref()
                 .parent()
                 .expect("No package should exist in the monorepo root")
                 .join("package.json");
             let PackageManifest {
                 name: package_manifest_name,
-            } = read_json_from_file(&monorepo_root.join(package_manifest_file))?;
+            } = read_json_from_file(&monorepo_root.as_ref().join(package_manifest_file))?;
             let package_manifest = package_manifests_by_package_name
                 .get(&package_manifest_name)
                 .expect(&format!(
                     "tsconfig {:?} should belong to a package in the lerna monorepo",
-                    tsconfig_file
+                    tsconfig_file.as_ref()
                 ));
 
             let transitive_internal_dependencies_inclusive = {
@@ -345,10 +351,12 @@ pub fn tsconfig_includes_by_package_name(
             .into_par_iter()
             .map(|package| -> Result<(_, _), Error> {
                 // This relies on the assumption that tsconfig.json is always the name of the tsconfig file
-                let tsconfig = &monorepo_root.join(package.tsconfig_file);
+                let tsconfig = &monorepo_root.as_ref().join(package.tsconfig_file);
                 let mut included_files = match calculation_type {
-                    Calculation::Estimate => tsconfig_includes_estimate(&monorepo_root, tsconfig),
-                    Calculation::Exact => tsconfig_includes_exact(&monorepo_root, tsconfig),
+                    Calculation::Estimate => {
+                        tsconfig_includes_estimate(monorepo_root.as_ref(), tsconfig)
+                    }
+                    Calculation::Exact => tsconfig_includes_exact(monorepo_root.as_ref(), tsconfig),
                 }?;
                 included_files.sort_unstable();
                 Ok((package.scoped_package_name, included_files))
