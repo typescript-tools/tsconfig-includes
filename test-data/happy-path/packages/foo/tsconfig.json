@@ -1,7 +1,8 @@
 {
-  "include": ["src/**/*", "test/**/*"],
+  "include": ["src/**/*", "src/**/*.json", "test/**/*"],
   "compilerOptions": {
-    "composite": true
+    "composite": true,
+    "resolveJsonModule": true
   },
   "references": []
 }

@@ -25,11 +25,13 @@
 //! files.
 //!
 //! This estimation is currently imprecise (and likely to stay that way) --
-//! it makes no attempt to follow the `exclude` or file-type based rules:
+//! it makes a best attempt to follow the `exclude` or file-type based rules:
 //!
 //! > If a glob pattern doesn’t include a file extension, then only files with
 //! > supported extensions are included (e.g. .ts, .tsx, and .d.ts by default,
 //! > with .js and .jsx if allowJs is set to true).
+//!
+//! without any guarantee of exhaustive compatibility.
 //!
 //! Additionally, this method performs no source-code analysis to follow
 //! imported files.
@@ -45,7 +47,7 @@
 #![deny(warnings, missing_docs)]
 
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     fs::File,
     io::Read,
     path::{self, Path, PathBuf},
@@ -74,10 +76,29 @@ pub enum Calculation {
     Exact,
 }
 
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CompilerOptions {
+    #[serde(default)]
+    allow_js: bool,
+    #[serde(default)]
+    resolve_json_module: bool,
+}
+
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct TypescriptConfig {
+    #[serde(default)]
+    compiler_options: CompilerOptions,
     // DISCUSS: how should we behave if `include` is not present?
     include: Vec<String>,
+}
+
+fn glob_file_extension(glob: &str) -> Option<String> {
+    if glob.ends_with('*') {
+        return None;
+    }
+    Some(glob.rsplit('*').next().unwrap().to_owned())
 }
 
 fn is_monorepo_file(monorepo_root: &Path, file: &Path) -> bool {
@@ -146,6 +167,42 @@ fn tsconfig_includes_estimate(
     let package_directory = tsconfig_file.parent().unwrap();
     let tsconfig: TypescriptConfig = read_json_from_file(tsconfig_file)?;
 
+    // LIMITATION: The TypeScript compiler docs state:
+    //
+    // > If a glob pattern doesn’t include a file extension, then only files
+    // > with supported extensions are included (e.g. .ts, .tsx, and .d.ts by
+    // > default, with .js and .jsx if allowJs is set to true).
+    //
+    // This implementation does not examine if globs contain extensions.
+
+    let whitelisted_file_extensions: HashSet<String> = {
+        let mut whitelist = vec![".ts", ".tsx", ".d.ts"];
+        if tsconfig.compiler_options.allow_js {
+            whitelist.append(&mut vec![".js", ".jsx"]);
+        }
+        let mut whitelist: Vec<String> = whitelist.into_iter().map(|s| s.to_owned()).collect();
+
+        // add extensions from any glob that specifies one
+        let mut glob_extensions: Vec<String> = tsconfig
+            .include
+            .iter()
+            .filter_map(|glob| glob_file_extension(glob))
+            .collect();
+
+        whitelist.append(&mut glob_extensions);
+        whitelist
+            .into_iter()
+            .filter(|extension| {
+                if !extension.ends_with(".json") {
+                    return true;
+                }
+                // For JSON modules, the presence of a "src/**/*.json" include glob
+                // is not enough, JSON imports are still gated by this compiler option.
+                tsconfig.compiler_options.resolve_json_module
+            })
+            .collect()
+    };
+
     let included_files: Vec<PathBuf> =
         GlobWalkerBuilder::from_patterns(package_directory, &tsconfig.include)
             .file_type(FileType::FILE)
@@ -155,11 +212,22 @@ fn tsconfig_includes_estimate(
             .into_iter()
             .collect::<Result<Vec<_>, _>>()?
             .into_iter()
-            .map(|dir_entry| {
-                let relative_path = pathdiff::diff_paths(dir_entry.path(), monorepo_root);
-                relative_path.ok_or_else(|| Error::RelativePathError {
-                    filename: dir_entry.path().to_owned(),
-                })
+            .filter_map(|dir_entry| {
+                let path = dir_entry.path();
+                // Can't use path::extension here because some globs specify
+                // more than just a single extension (like .d.ts).
+                let should_accept_file = whitelisted_file_extensions
+                    .iter()
+                    .any(|extension| path.to_string_lossy().ends_with(extension));
+
+                if !should_accept_file {
+                    return None;
+                }
+
+                let relative_path = pathdiff::diff_paths(path, monorepo_root);
+                Some(relative_path.ok_or_else(|| Error::RelativePathError {
+                    filename: path.to_owned(),
+                }))
             })
             .collect::<Result<Vec<_>, Error>>()?;
 

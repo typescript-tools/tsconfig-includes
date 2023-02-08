@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use tsconfig_includes::{tsconfig_includes_by_package_name, Calculation};
 
 fn check(tsconfig: &str, expected: &[(&str, &str)]) {
-    match tsconfig_includes_by_package_name(&PathBuf::from(tsconfig), Calculation::Estimate) {
+    match tsconfig_includes_by_package_name(&PathBuf::from(tsconfig), Calculation::Exact) {
         Ok(actual) => {
             let expected = expected.iter().fold(
                 HashMap::new(),

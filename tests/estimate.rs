@@ -21,12 +21,14 @@ fn check(tsconfig: &str, expected: &[&str]) {
 }
 
 #[test]
-fn list_happy_path_dependencies_bar() {
+fn list_estimate_happy_path_dependencies_bar() {
     check(
         "test-data/happy-path/packages/bar/tsconfig.json",
         &[
             "packages/bar/src/bin.ts",
             "packages/bar/src/index.ts",
+            "packages/bar/src/legacy.js",
+            "packages/foo/src/data.json",
             "packages/foo/src/index.ts",
             "packages/foo/src/lib.ts",
         ],
@@ -34,9 +36,13 @@ fn list_happy_path_dependencies_bar() {
 }
 
 #[test]
-fn list_happy_path_dependencies_foo() {
+fn list_estimate_happy_path_dependencies_foo() {
     check(
         "test-data/happy-path/packages/foo/tsconfig.json",
-        &["packages/foo/src/index.ts", "packages/foo/src/lib.ts"],
+        &[
+            "packages/foo/src/data.json",
+            "packages/foo/src/index.ts",
+            "packages/foo/src/lib.ts",
+        ],
     );
 }

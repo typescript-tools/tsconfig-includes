@@ -1,6 +1,7 @@
 {
   "include": ["src/**/*", "test/**/*"],
   "compilerOptions": {
+    "allowJs": true,
     "composite": true
   },
   "references": [
