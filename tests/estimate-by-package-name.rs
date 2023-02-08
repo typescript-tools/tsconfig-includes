@@ -31,8 +31,8 @@ fn list_happy_path_dependencies_bar() {
         &[
             ("bar", "packages/bar/src/bin.ts"),
             ("bar", "packages/bar/src/index.ts"),
-            ("foo", "packages/foo/src/lib.ts"),
             ("foo", "packages/foo/src/index.ts"),
+            ("foo", "packages/foo/src/lib.ts"),
         ],
     );
 }
@@ -42,8 +42,8 @@ fn list_happy_path_dependencies_foo() {
     check(
         "test-data/happy-path/packages/foo/tsconfig.json",
         &[
-            ("foo", "packages/foo/src/lib.ts"),
             ("foo", "packages/foo/src/index.ts"),
+            ("foo", "packages/foo/src/lib.ts"),
         ],
     );
 }

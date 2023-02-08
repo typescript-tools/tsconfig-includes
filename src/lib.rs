@@ -249,8 +249,8 @@ pub fn tsconfig_includes(
 }
 
 /// Enumerate source code files used by the TypeScript compiler during
-/// compilation. The return value is a list of relative paths from the monorepo
-/// root, grouped by scoped package name.
+/// compilation. The return value is a list of alphabetically-sorted relative
+/// paths from the monorepo root, grouped by scoped package name.
 pub fn tsconfig_includes_by_package_name(
     tsconfig: &Path,
     calculation_type: Calculation,
@@ -314,11 +314,12 @@ pub fn tsconfig_includes_by_package_name(
                 .parent()
                 .unwrap()
                 .join("tsconfig.json");
-            let included = match calculation_type {
+            let mut included_files = match calculation_type {
                 Calculation::Estimate => tsconfig_includes_estimate(&monorepo_root, tsconfig),
                 Calculation::Exact => tsconfig_includes_exact(&monorepo_root, tsconfig),
             }?;
-            Ok((manifest.contents.name.clone(), included))
+            included_files.sort_unstable();
+            Ok((manifest.contents.name.clone(), included_files))
         })
         .collect::<Result<HashMap<_, _>, _>>()?;
 
