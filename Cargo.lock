@@ -703,8 +703,12 @@ version = "2.0.4"
 dependencies = [
  "anyhow",
  "env_logger",
+ "globwalk",
  "log",
+ "pathdiff",
  "rayon",
+ "serde",
+ "serde_json",
  "thiserror",
  "typescript_tools",
 ]

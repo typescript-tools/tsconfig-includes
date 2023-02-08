@@ -25,6 +25,27 @@
         "type": "github"
       }
     },
+    "fenix": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ],
+        "rust-analyzer-src": "rust-analyzer-src"
+      },
+      "locked": {
+        "lastModified": 1675750990,
+        "narHash": "sha256-6FJYYK/ivsJJ1bUZydWMzQ6xtwAa8FMdx9RQPICkW7U=",
+        "owner": "nix-community",
+        "repo": "fenix",
+        "rev": "c975d4769150469fc3f56ea4c360e35b2e0c69ee",
+        "type": "github"
+      },
+      "original": {
+        "owner": "nix-community",
+        "repo": "fenix",
+        "type": "github"
+      }
+    },
     "flake-compat": {
       "flake": false,
       "locked": {
@@ -97,9 +118,28 @@
     "root": {
       "inputs": {
         "crane": "crane",
+        "fenix": "fenix",
         "flake-utils": "flake-utils",
         "nixpkgs": "nixpkgs",
-        "pre-commit-hooks": "pre-commit-hooks"
+        "pre-commit-hooks": "pre-commit-hooks",
+        "typescript-tools": "typescript-tools"
+      }
+    },
+    "rust-analyzer-src": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1675722937,
+        "narHash": "sha256-yVSjDmsfDA2D7ATQNy3pZSgALtuXqKQ/gxLzu+Hd7ng=",
+        "owner": "rust-lang",
+        "repo": "rust-analyzer",
+        "rev": "1d32a7b7c66450c792dafe162b229d40ab6a1cc8",
+        "type": "github"
+      },
+      "original": {
+        "owner": "rust-lang",
+        "ref": "nightly",
+        "repo": "rust-analyzer",
+        "type": "github"
       }
     },
     "rust-overlay": {
@@ -124,6 +164,35 @@
       "original": {
         "owner": "oxalica",
         "repo": "rust-overlay",
+        "type": "github"
+      }
+    },
+    "typescript-tools": {
+      "inputs": {
+        "crane": [
+          "crane"
+        ],
+        "flake-utils": [
+          "flake-utils"
+        ],
+        "nixpkgs": [
+          "nixpkgs"
+        ],
+        "pre-commit-hooks": [
+          "pre-commit-hooks"
+        ]
+      },
+      "locked": {
+        "lastModified": 1675804313,
+        "narHash": "sha256-bBKuZaP3uhUQ5SNnuh4VW5GUoPDATB4GLUJXz4+MxSY=",
+        "owner": "typescript-tools",
+        "repo": "rust-implementation",
+        "rev": "9558082c157e07f6ecbfec202e58b4d05b158adc",
+        "type": "github"
+      },
+      "original": {
+        "owner": "typescript-tools",
+        "repo": "rust-implementation",
         "type": "github"
       }
     }

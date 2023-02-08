@@ -7,10 +7,21 @@
       inputs.nixpkgs.follows = "nixpkgs";
       inputs.flake-utils.follows = "flake-utils";
     };
+    fenix = {
+      url = "github:nix-community/fenix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
     pre-commit-hooks = {
       url = "github:cachix/pre-commit-hooks.nix";
       inputs.flake-utils.follows = "flake-utils";
       inputs.nixpkgs.follows = "nixpkgs";
+    };
+    typescript-tools = {
+      url = "github:typescript-tools/rust-implementation";
+      inputs.nixpkgs.follows = "nixpkgs";
+      inputs.flake-utils.follows = "flake-utils";
+      inputs.crane.follows = "crane";
+      inputs.pre-commit-hooks.follows = "pre-commit-hooks";
     };
   };
 
@@ -18,8 +29,10 @@
     self,
     nixpkgs,
     crane,
+    fenix,
     flake-utils,
     pre-commit-hooks,
+    typescript-tools,
     ...
   }:
     flake-utils.lib.eachDefaultSystem (system: let
@@ -27,11 +40,26 @@
         inherit system;
       };
 
-      craneLib = crane.lib.${system};
+      fenix-channel = fenix.packages.${system}.latest;
+      fenix-toolchain = fenix-channel.withComponents [
+        "rustc"
+        "cargo"
+        "clippy"
+        "rust-analysis"
+        "rust-src"
+        "rustfmt"
+      ];
+
+      craneLib = crane.lib.${system}.overrideToolchain fenix-toolchain;
 
       # Common derivation arguments used for all builds
       commonArgs = {
         src = craneLib.cleanCargoSource ./.;
+
+        buildInputs = [
+          fenix-channel.rustc
+          fenix-channel.clippy
+        ];
       };
 
       # Build *just* the cargo dependencies, so we can reuse
@@ -86,9 +114,13 @@
       };
       devShells = {
         default = nixpkgs.legacyPackages.${system}.mkShell {
+          buildInputs = commonArgs.buildInputs;
           nativeBuildInputs = [
-            pkgs.cargo
+            fenix-toolchain
+            fenix.packages.${system}.rust-analyzer
             pkgs.nodejs
+            pkgs.nodePackages.typescript
+            typescript-tools.packages.${pkgs.system}.default
           ];
 
           inherit (self.checks.${system}.pre-commit-check) shellHook;

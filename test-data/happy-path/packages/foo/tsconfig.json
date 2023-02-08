@@ -1,0 +1,7 @@
+{
+  "include": ["src/**/*", "test/**/*"],
+  "compilerOptions": {
+    "composite": true
+  },
+  "references": []
+}
