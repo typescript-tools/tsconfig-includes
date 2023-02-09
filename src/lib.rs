@@ -64,7 +64,7 @@ mod error;
 use crate::error::Error;
 
 /// Method to use to enumerate inputs to the TypeScript compiler.
-#[derive(Debug)]
+#[derive(Copy, Clone, Debug)]
 pub enum Calculation {
     /// Estimate the true list of inputs to the TypeScript compiler by listing
     /// the files matching the tsconfig's `include` globs.
@@ -278,14 +278,15 @@ fn tsconfig_includes_estimate(
 ///
 /// - `monorepo_root` may be an absolute path
 /// - `tsconfig_files` should be relative paths from the monorepo root
-pub fn tsconfig_includes_by_package_name<P, Q>(
+pub fn tsconfig_includes_by_package_name<P, Q, C>(
     monorepo_root: P,
     tsconfig_files: &[Q],
-    calculation_type: Calculation,
+    calculation_type: C,
 ) -> Result<HashMap<String, Vec<PathBuf>>, Error>
 where
     P: AsRef<Path> + Sync,
     Q: AsRef<Path>,
+    C: Into<Calculation> + Copy + Sync + Send,
 {
     let lerna_manifest =
         monorepo_manifest::MonorepoManifest::from_directory(monorepo_root.as_ref())?;
@@ -352,7 +353,7 @@ where
             .map(|package| -> Result<(_, _), Error> {
                 // This relies on the assumption that tsconfig.json is always the name of the tsconfig file
                 let tsconfig = &monorepo_root.as_ref().join(package.tsconfig_file);
-                let mut included_files = match calculation_type {
+                let mut included_files = match calculation_type.into() {
                     Calculation::Estimate => {
                         tsconfig_includes_estimate(monorepo_root.as_ref(), tsconfig)
                     }
