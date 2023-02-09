@@ -3,10 +3,14 @@ use std::path::PathBuf;
 
 use tsconfig_includes::{tsconfig_includes_by_package_name, Calculation};
 
-fn check(tsconfig: &str, expected: &[(&str, &str)]) {
+fn check(tsconfig: &[&str], expected: &[(&str, &str)]) {
     match tsconfig_includes_by_package_name(
         &PathBuf::from("test-data/happy-path"),
-        &[&PathBuf::from(tsconfig)],
+        tsconfig
+            .into_iter()
+            .map(|s| PathBuf::from(s))
+            .collect::<Vec<_>>()
+            .as_ref(),
         Calculation::Exact,
     ) {
         Ok(actual) => {
@@ -31,7 +35,7 @@ fn check(tsconfig: &str, expected: &[(&str, &str)]) {
 #[test]
 fn list_grouped_exact_happy_path_dependencies_bar() {
     check(
-        "packages/bar/tsconfig.json",
+        &["packages/bar/tsconfig.json"],
         &[
             ("bar", "packages/bar/src/bin.ts"),
             ("bar", "packages/bar/src/index.ts"),
@@ -46,8 +50,23 @@ fn list_grouped_exact_happy_path_dependencies_bar() {
 #[test]
 fn list_grouped_exact_happy_path_dependencies_foo() {
     check(
-        "packages/foo/tsconfig.json",
+        &["packages/foo/tsconfig.json"],
         &[
+            ("foo", "packages/foo/src/data.json"),
+            ("foo", "packages/foo/src/index.ts"),
+            ("foo", "packages/foo/src/lib.ts"),
+        ],
+    );
+}
+
+#[test]
+fn list_grouped_exact_happy_path_dependencies_foo_and_bar() {
+    check(
+        &["packages/foo/tsconfig.json", "packages/bar/tsconfig.json"],
+        &[
+            ("bar", "packages/bar/src/bin.ts"),
+            ("bar", "packages/bar/src/index.ts"),
+            ("bar", "packages/bar/src/legacy.js"),
             ("foo", "packages/foo/src/data.json"),
             ("foo", "packages/foo/src/index.ts"),
             ("foo", "packages/foo/src/lib.ts"),
