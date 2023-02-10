@@ -187,10 +187,9 @@ fn tsconfig_includes_exact(monorepo_root: &Path, tsconfig: &Path) -> Result<Vec<
 
     let included_files: Vec<PathBuf> = string
         .lines()
-        .filter_map(|s| match s.is_empty() {
-            true => None,
-            false => Some(PathBuf::from(s)),
-        })
+        // Drop the empty newline at the end of stdout
+        .filter(|s| !s.is_empty())
+        .map(|s| PathBuf::from(s))
         .filter_map(|source_file| {
             if is_monorepo_file(monorepo_root, &source_file) {
                 let relative_path =
