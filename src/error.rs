@@ -30,6 +30,9 @@ pub enum Error {
         source: std::io::Error,
     },
 
+    #[error("Error executing the TypeScript compiler: {command:?} yielded {error:?}")]
+    TypescriptCompilerError { command: String, error: String },
+
     #[error("Error pasing response from TypeScript compiler: {source:?}")]
     TypescriptCompilerResponseParseError {
         #[from]

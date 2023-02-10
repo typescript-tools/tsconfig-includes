@@ -176,16 +176,20 @@ fn remove_relative_path_prefix_from_absolute_path(
 /// Invoke the TypeScript compiler with the [listFilesOnly] flag to enumerate
 /// the files included in the compilation process.
 fn tsconfig_includes_exact(monorepo_root: &Path, tsconfig: &Path) -> Result<Vec<PathBuf>, Error> {
-    let string = String::from_utf8(
-        Command::new("tsc")
-            .arg("--listFilesOnly")
-            .arg("--project")
-            .arg(tsconfig)
-            .output()?
-            .stdout,
-    )?;
+    let child = Command::new("tsc")
+        .arg("--listFilesOnly")
+        .arg("--project")
+        .arg(tsconfig)
+        .output()?;
+    if child.status.code() != Some(0) {
+        return Err(Error::TypescriptCompilerError {
+            command: format!("tsc --listFilesOnly --project {:?}", tsconfig),
+            error: String::from_utf8(child.stderr)?,
+        });
+    }
+    let stdout = String::from_utf8(child.stdout)?;
 
-    let included_files: Vec<PathBuf> = string
+    let included_files: Vec<PathBuf> = stdout
         .lines()
         // Drop the empty newline at the end of stdout
         .filter(|s| !s.is_empty())
