@@ -241,6 +241,14 @@ fn tsconfig_includes_estimate(
             .collect()
     };
 
+    let is_whitelisted_file_extension = |path: &Path| -> bool {
+        // Can't use path::extension here because some globs specify more than
+        // just a single extension (like .d.ts).
+        whitelisted_file_extensions
+            .iter()
+            .any(|extension| path.to_str().unwrap().ends_with(extension))
+    };
+
     let included_files: Vec<PathBuf> =
         GlobWalkerBuilder::from_patterns(package_directory, &tsconfig.include)
             .file_type(FileType::FILE)
@@ -248,26 +256,23 @@ fn tsconfig_includes_estimate(
             .build()
             .expect("Should be able to create glob walker")
             .into_iter()
-            .collect::<Result<Vec<_>, _>>()?
-            .into_iter()
-            .filter_map(|dir_entry| {
-                let path = dir_entry.path();
-                // Can't use path::extension here because some globs specify
-                // more than just a single extension (like .d.ts).
-                let should_accept_file = whitelisted_file_extensions
-                    .iter()
-                    .any(|extension| path.to_string_lossy().ends_with(extension));
-
-                if !should_accept_file {
-                    return None;
+            .filter(|maybe_dir_entry| {
+                if let Ok(dir_entry) = maybe_dir_entry {
+                    is_monorepo_file(monorepo_root, dir_entry.path())
+                        && is_whitelisted_file_extension(dir_entry.path())
+                } else {
+                    true
                 }
-
-                Some(Ok(path
+            })
+            .filter_map(|maybe_dir_entry| match maybe_dir_entry {
+                Ok(dir_entry) => Some(Ok(dir_entry
+                    .path()
                     .strip_prefix(monorepo_root)
                     .map(|path| path.to_owned())
-                    .unwrap()))
+                    .unwrap())),
+                Err(err) => Some(Err(err.into())),
             })
-            .collect::<Result<Vec<_>, Error>>()?;
+            .collect::<Result<Vec<PathBuf>, Error>>()?;
 
     Ok(included_files)
 }
