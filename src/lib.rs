@@ -112,7 +112,12 @@ fn glob_file_extension(glob: &str) -> Option<String> {
     if glob.ends_with('*') {
         return None;
     }
-    Some(glob.rsplit('*').next().unwrap().to_owned())
+    Some(
+        glob.rsplit('*')
+            .next()
+            .expect("Expected glob to contain an asterisk")
+            .to_owned(),
+    )
 }
 
 fn is_monorepo_file(monorepo_root: &Path, file: &Path) -> bool {
@@ -202,7 +207,9 @@ fn tsconfig_includes_estimate(
     monorepo_root: &Path,
     tsconfig_file: &Path,
 ) -> Result<Vec<PathBuf>, Error> {
-    let package_directory = tsconfig_file.parent().unwrap();
+    let package_directory = tsconfig_file
+        .parent()
+        .expect("No package should exist in the monorepo root");
     let tsconfig: TypescriptConfig = read_json_from_file(tsconfig_file)?;
 
     // LIMITATION: The TypeScript compiler docs state:
@@ -244,9 +251,11 @@ fn tsconfig_includes_estimate(
     let is_whitelisted_file_extension = |path: &Path| -> bool {
         // Can't use path::extension here because some globs specify more than
         // just a single extension (like .d.ts).
-        whitelisted_file_extensions
-            .iter()
-            .any(|extension| path.to_str().unwrap().ends_with(extension))
+        whitelisted_file_extensions.iter().any(|extension| {
+            path.to_str()
+                .expect("Path should contain only valid UTF-8")
+                .ends_with(extension)
+        })
     };
 
     let included_files: Vec<PathBuf> =
@@ -269,7 +278,10 @@ fn tsconfig_includes_estimate(
                     .path()
                     .strip_prefix(monorepo_root)
                     .map(|path| path.to_owned())
-                    .unwrap())),
+                    .expect(&format!(
+                        "Should be able to strip monorepo-root prefix from path in monorepo: {:?}",
+                        dir_entry.path()
+                    )))),
                 Err(err) => Some(Err(err.into())),
             })
             .collect::<Result<Vec<PathBuf>, Error>>()?;
@@ -337,7 +349,7 @@ where
                     tsconfig_file: package_manifest
                         .path()
                         .parent()
-                        .unwrap()
+                        .expect("No package should exist in the monorepo root")
                         .join("tsconfig.json"),
                 })
                 .collect())
