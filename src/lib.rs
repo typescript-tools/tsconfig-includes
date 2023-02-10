@@ -239,6 +239,7 @@ fn tsconfig_includes_estimate(
             .filter_map(|glob| glob_file_extension(glob))
             .collect();
 
+        // FIXME: glob extensions apply to a specific glob, not every glob
         whitelist.append(&mut glob_extensions);
         whitelist
             .into_iter()
