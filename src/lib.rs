@@ -190,16 +190,11 @@ fn tsconfig_includes_exact(monorepo_root: &Path, tsconfig: &Path) -> Result<Vec<
         // Drop the empty newline at the end of stdout
         .filter(|s| !s.is_empty())
         .map(|s| PathBuf::from(s))
-        .filter_map(|source_file| {
-            if is_monorepo_file(monorepo_root, &source_file) {
-                let relative_path =
-                    remove_relative_path_prefix_from_absolute_path(monorepo_root, &source_file);
-                Some(relative_path.unwrap())
-            } else {
-                None
-            }
+        .filter(|path| is_monorepo_file(monorepo_root, path))
+        .map(|source_file| {
+            remove_relative_path_prefix_from_absolute_path(monorepo_root, &source_file)
         })
-        .collect();
+        .collect::<Result<_, _>>()?;
 
     Ok(included_files)
 }
