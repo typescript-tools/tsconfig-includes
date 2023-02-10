@@ -108,6 +108,10 @@ struct TypescriptPackage {
     tsconfig_file: PathBuf,
 }
 
+fn is_glob(string: &str) -> bool {
+    string.contains('*')
+}
+
 fn glob_file_extension(glob: &str) -> Option<String> {
     if glob.ends_with('*') {
         return None;
@@ -231,6 +235,7 @@ fn tsconfig_includes_estimate(
         let mut glob_extensions: Vec<String> = tsconfig
             .include
             .iter()
+            .filter(|pattern| is_glob(pattern))
             .filter_map(|glob| glob_file_extension(glob))
             .collect();
 
