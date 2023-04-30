@@ -43,7 +43,7 @@
 //! [tsconfig exclude]: https://www.typescriptlang.org/tsconfig#exclude
 
 #![forbid(unsafe_code)]
-#![deny(warnings, missing_docs)]
+#![deny(warnings, missing_docs, missing_debug_implementations)]
 
 use std::{
     collections::{HashMap, HashSet},
@@ -64,7 +64,7 @@ mod error;
 use crate::error::Error;
 
 /// Method to use to enumerate inputs to the TypeScript compiler.
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub enum Calculation {
     /// Estimate the true list of inputs to the TypeScript compiler by listing
     /// the files matching the tsconfig's `include` globs.
