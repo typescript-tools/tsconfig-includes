@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use tsconfig_includes::{tsconfig_includes_by_package_name, Calculation};
+use tsconfig_includes::exact::tsconfig_includes_by_package_name;
 
 fn check(tsconfig: &[&str], expected: &[(&str, &str)]) {
     match tsconfig_includes_by_package_name(
@@ -11,7 +11,6 @@ fn check(tsconfig: &[&str], expected: &[(&str, &str)]) {
             .map(|s| PathBuf::from(s))
             .collect::<Vec<_>>()
             .as_ref(),
-        Calculation::Exact,
     ) {
         Ok(actual) => {
             let expected = expected.iter().fold(
