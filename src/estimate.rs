@@ -276,12 +276,14 @@ pub enum ErrorKind {
 /// - `tsconfig_files` should be relative paths from the monorepo root
 pub fn tsconfig_includes_by_package_name<P, Q>(
     monorepo_root: P,
-    tsconfig_files: &[Q],
+    tsconfig_files: Q,
 ) -> Result<HashMap<String, Vec<PathBuf>>, Error>
 where
     P: AsRef<Path> + Sync,
-    Q: AsRef<Path>,
+    Q: IntoIterator,
+    Q::Item: AsRef<Path>,
 {
+    // REFACTOR: avoid duplicated code in estimate.rs and exact.rs
     let lerna_manifest =
         monorepo_manifest::MonorepoManifest::from_directory(monorepo_root.as_ref())?;
     let package_manifests_by_package_name = lerna_manifest.package_manifests_by_package_name()?;
@@ -291,7 +293,7 @@ where
     let transitive_internal_dependency_tsconfigs_inclusive_to_enumerate: HashSet<
         TypescriptPackage,
     > = tsconfig_files
-        .iter()
+        .into_iter()
         .map(|tsconfig_file| -> Result<Vec<TypescriptPackage>, Error> {
             let package_manifest_file = tsconfig_file
                 .as_ref()
@@ -308,6 +310,7 @@ where
                     tsconfig_file.as_ref()
                 ));
 
+            // DISCUSS: what's the deal with transitive deps if enumerate is point and shoot?
             let transitive_internal_dependencies_inclusive = {
                 // Enumerate internal dependencies (exclusive)
                 let mut packages = package_manifest
@@ -335,6 +338,7 @@ where
                 })
                 .collect())
         })
+        // REFACTOR: avoid intermediate allocations
         .collect::<Result<Vec<_>, _>>()?
         .into_iter()
         .flatten()
