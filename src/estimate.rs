@@ -152,7 +152,7 @@ fn tsconfig_includes_estimate(
                 .file_type(FileType::FILE)
                 .min_depth(0)
                 .build()
-                .expect("Should be able to create glob walker")
+                .expect("should be able to create glob walker")
                 .filter(|maybe_dir_entry| match maybe_dir_entry {
                     Ok(dir_entry) => {
                         is_monorepo_file(monorepo_root, dir_entry.path())
