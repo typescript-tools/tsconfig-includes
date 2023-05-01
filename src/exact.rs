@@ -1,6 +1,7 @@
 use std::{
     collections::{HashMap, HashSet},
     fmt::Display,
+    iter,
     path::{Path, PathBuf},
     process::Command,
     string,
@@ -244,17 +245,15 @@ where
 
             let transitive_internal_dependencies_inclusive = {
                 // Enumerate internal dependencies (exclusive)
-                let mut packages = package_manifest
+                package_manifest
                     .transitive_internal_dependency_package_names_exclusive(
                         &package_manifests_by_package_name,
-                    );
-                // Make this list inclusive of the target package
-                packages.push(&package_manifest);
-                packages
+                    )
+                    // Make this list inclusive of the target package
+                    .chain(iter::once(package_manifest))
             };
 
             Ok(transitive_internal_dependencies_inclusive
-                .iter()
                 .map(|package_manifest| {
                     let path = package_manifest.path();
                     TypescriptPackage {

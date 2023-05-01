@@ -1,6 +1,7 @@
 use std::{
     collections::{HashMap, HashSet},
     fmt::Display,
+    iter,
     path::{Path, PathBuf},
 };
 
@@ -34,149 +35,185 @@ struct TypescriptConfig {
     include: Vec<String>,
 }
 
+impl TypescriptConfig {
+    /// LIMITATION: The TypeScript compiler docs state:
+    ///
+    /// > If a glob pattern doesn’t include a file extension, then only files
+    /// > with supported extensions are included (e.g. .ts, .tsx, and .d.ts by
+    /// > default, with .js and .jsx if allowJs is set to true).
+    ///
+    /// This implementation does not examine if globs contain extensions.
+    fn whitelisted_file_extensions(&self) -> HashSet<String> {
+        let mut whitelist: Vec<String> = vec![
+            String::from(".ts"),
+            String::from(".tsx"),
+            String::from(".d.ts"),
+        ];
+        if self.compiler_options.allow_js {
+            whitelist.append(&mut vec![String::from(".js"), String::from(".jsx")]);
+        }
+
+        // add extensions from any glob that specifies one
+        let mut glob_extensions: Vec<String> = self
+            .include
+            .iter()
+            .filter(|pattern| is_glob(pattern))
+            .filter_map(|glob| glob_file_extension(glob))
+            .collect();
+
+        // FIXME: glob extensions apply to a specific glob, not every glob
+        whitelist.append(&mut glob_extensions);
+        whitelist
+            .into_iter()
+            .filter(|extension| {
+                if !extension.ends_with(".json") {
+                    return true;
+                }
+                // For JSON modules, the presence of a "src/**/*.json" include glob
+                // is not enough, JSON imports are still gated by this compiler option.
+                self.compiler_options.resolve_json_module
+            })
+            .collect()
+    }
+}
+
 #[derive(Debug)]
 #[non_exhaustive]
-pub struct EnumerateError {
-    kind: EnumerateErrorKind,
+pub struct BuildWalkerError {
+    kind: BuildWalkerErrorKind,
 }
 
-impl Display for EnumerateError {
+impl Display for BuildWalkerError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &self.kind {
-            EnumerateErrorKind::PackageInMonorepoRoot(path) => {
+            BuildWalkerErrorKind::PackageInMonorepoRoot(path) => {
                 write!(f, "unexpected package in monorepo root: {:?}", path)
             }
-            EnumerateErrorKind::WalkError(_) => write!(f, "unable to walk directory tree"),
-            _ => write!(f, "unable to estimate tsconfig includes"),
+            BuildWalkerErrorKind::IO(_) => write!(f, "unable to estimate tsconfig includes"),
         }
     }
 }
 
-impl std::error::Error for EnumerateError {
+impl std::error::Error for BuildWalkerError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match &self.kind {
-            EnumerateErrorKind::IO(err) => Some(err),
-            EnumerateErrorKind::Path(err) => Some(err),
-            EnumerateErrorKind::PackageInMonorepoRoot(_) => None,
-            EnumerateErrorKind::WalkError(err) => Some(err),
+            BuildWalkerErrorKind::IO(err) => Some(err),
+            BuildWalkerErrorKind::PackageInMonorepoRoot(_) => None,
         }
     }
 }
 
 #[derive(Debug)]
-pub enum EnumerateErrorKind {
+pub enum BuildWalkerErrorKind {
     #[non_exhaustive]
     IO(crate::io::FromFileError),
     #[non_exhaustive]
-    Path(path::StripPrefixError),
-    #[non_exhaustive]
     PackageInMonorepoRoot(PathBuf),
-    #[non_exhaustive]
-    WalkError(globwalk::WalkError),
 }
 
-impl From<crate::io::FromFileError> for EnumerateErrorKind {
+impl From<crate::io::FromFileError> for BuildWalkerErrorKind {
     fn from(err: crate::io::FromFileError) -> Self {
         Self::IO(err)
     }
 }
 
-impl From<globwalk::WalkError> for EnumerateErrorKind {
-    fn from(err: globwalk::WalkError) -> Self {
-        Self::WalkError(err)
+#[derive(Debug)]
+#[non_exhaustive]
+pub struct WalkError {
+    kind: WalkErrorKind,
+}
+
+impl Display for WalkError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self.kind {
+            WalkErrorKind::WalkError(_) => write!(f, "unable to walk directory tree"),
+            // DISCUSS: is this something we can fully test for at compile time?
+            // If so, we can use `expect` instead of exposing this possibility to the user.
+            WalkErrorKind::Path(_) => write!(f, "unable to strip path prefix"),
+        }
     }
+}
+
+impl std::error::Error for WalkError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match &self.kind {
+            WalkErrorKind::Path(err) => Some(err),
+            WalkErrorKind::WalkError(err) => Some(err),
+        }
+    }
+}
+
+impl From<globwalk::WalkError> for WalkError {
+    fn from(err: globwalk::WalkError) -> Self {
+        Self {
+            kind: WalkErrorKind::WalkError(err),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub enum WalkErrorKind {
+    #[non_exhaustive]
+    Path(path::StripPrefixError),
+    #[non_exhaustive]
+    WalkError(globwalk::WalkError),
 }
 
 /// Use the `tsconfig_file`'s `include` configuration to enumerate the list of files
 /// matching include globs.
-fn tsconfig_includes_estimate(
-    monorepo_root: &Path,
-    tsconfig_file: &Path,
-) -> Result<Vec<PathBuf>, EnumerateError> {
-    (|| {
-        let package_directory = tsconfig_file
-            .parent()
-            .ok_or_else(|| EnumerateErrorKind::PackageInMonorepoRoot(tsconfig_file.to_owned()))?;
-        let tsconfig: TypescriptConfig = read_json_from_file(tsconfig_file)?;
+fn tsconfig_includes_estimate<'a, 'b>(
+    monorepo_root: &'a Path,
+    tsconfig_file: &'b Path,
+) -> Result<impl Iterator<Item = Result<PathBuf, WalkError>>, BuildWalkerError> {
+    let monorepo_root = monorepo_root.to_owned();
+    let tsconfig_file = tsconfig_file.to_owned();
+    let package_directory = tsconfig_file.parent().ok_or_else(|| BuildWalkerError {
+        kind: BuildWalkerErrorKind::PackageInMonorepoRoot(tsconfig_file.to_owned()),
+    })?;
+    let tsconfig: TypescriptConfig =
+        read_json_from_file(&tsconfig_file).map_err(|err| BuildWalkerError {
+            kind: BuildWalkerErrorKind::IO(err),
+        })?;
 
-        // LIMITATION: The TypeScript compiler docs state:
-        //
-        // > If a glob pattern doesn’t include a file extension, then only files
-        // > with supported extensions are included (e.g. .ts, .tsx, and .d.ts by
-        // > default, with .js and .jsx if allowJs is set to true).
-        //
-        // This implementation does not examine if globs contain extensions.
+    let whitelisted_file_extensions = tsconfig.whitelisted_file_extensions();
 
-        let whitelisted_file_extensions: HashSet<String> = {
-            let mut whitelist = vec![".ts", ".tsx", ".d.ts"];
-            if tsconfig.compiler_options.allow_js {
-                whitelist.append(&mut vec![".js", ".jsx"]);
+    let is_whitelisted_file_extension = move |path: &Path| -> bool {
+        // Can't use path::extension here because some globs specify more than
+        // just a single extension (like .d.ts).
+        whitelisted_file_extensions.iter().any(|extension| {
+            path.to_str()
+                .expect("Path should contain only valid UTF-8")
+                .ends_with(extension)
+        })
+    };
+
+    let monorepo_root_two = monorepo_root.clone();
+    let included_files = GlobWalkerBuilder::from_patterns(package_directory, &tsconfig.include)
+        .file_type(FileType::FILE)
+        .min_depth(0)
+        .build()
+        .expect("should be able to create glob walker")
+        .filter(move |maybe_dir_entry| match maybe_dir_entry {
+            Ok(dir_entry) => {
+                is_monorepo_file(&monorepo_root_two, dir_entry.path())
+                    && is_whitelisted_file_extension(dir_entry.path())
             }
-            let mut whitelist: Vec<String> = whitelist.into_iter().map(|s| s.to_owned()).collect();
+            Err(_) => true,
+        })
+        .map(move |maybe_dir_entry| -> Result<PathBuf, WalkError> {
+            let dir_entry = maybe_dir_entry?;
+            let path = dir_entry
+                .path()
+                .strip_prefix(&monorepo_root)
+                .map(ToOwned::to_owned)
+                .expect(&format!(
+                    "Should be able to strip monorepo-root prefix from path in monorepo: {:?}",
+                    dir_entry.path()
+                ));
+            Ok(path)
+        });
 
-            // add extensions from any glob that specifies one
-            let mut glob_extensions: Vec<String> = tsconfig
-                .include
-                .iter()
-                .filter(|pattern| is_glob(pattern))
-                .filter_map(|glob| glob_file_extension(glob))
-                .collect();
-
-            // FIXME: glob extensions apply to a specific glob, not every glob
-            whitelist.append(&mut glob_extensions);
-            whitelist
-                .into_iter()
-                .filter(|extension| {
-                    if !extension.ends_with(".json") {
-                        return true;
-                    }
-                    // For JSON modules, the presence of a "src/**/*.json" include glob
-                    // is not enough, JSON imports are still gated by this compiler option.
-                    tsconfig.compiler_options.resolve_json_module
-                })
-                .collect()
-        };
-
-        let is_whitelisted_file_extension = |path: &Path| -> bool {
-            // Can't use path::extension here because some globs specify more than
-            // just a single extension (like .d.ts).
-            whitelisted_file_extensions.iter().any(|extension| {
-                path.to_str()
-                    .expect("Path should contain only valid UTF-8")
-                    .ends_with(extension)
-            })
-        };
-
-        let included_files: Vec<PathBuf> =
-            GlobWalkerBuilder::from_patterns(package_directory, &tsconfig.include)
-                .file_type(FileType::FILE)
-                .min_depth(0)
-                .build()
-                .expect("should be able to create glob walker")
-                .filter(|maybe_dir_entry| match maybe_dir_entry {
-                    Ok(dir_entry) => {
-                        is_monorepo_file(monorepo_root, dir_entry.path())
-                            && is_whitelisted_file_extension(dir_entry.path())
-                    }
-                    Err(_) => true,
-                })
-                .map(|maybe_dir_entry| -> Result<_, EnumerateErrorKind> {
-                    let dir_entry = maybe_dir_entry?;
-                    let path = dir_entry
-                        .path()
-                        .strip_prefix(monorepo_root)
-                        .map(ToOwned::to_owned)
-                        .expect(&format!(
-                        "Should be able to strip monorepo-root prefix from path in monorepo: {:?}",
-                        dir_entry.path()
-                    ));
-                    Ok(path)
-                })
-                .collect::<Result<Vec<PathBuf>, EnumerateErrorKind>>()?;
-
-        Ok(included_files)
-    })()
-    .map_err(|kind| EnumerateError { kind })
+    Ok(included_files)
 }
 
 #[derive(Debug)]
@@ -203,7 +240,8 @@ impl std::error::Error for Error {
             ErrorKind::EnumeratePackageManifestsError(err) => Some(err),
             ErrorKind::PackageInMonorepoRoot(_) => None,
             ErrorKind::FromFile(err) => Some(err),
-            ErrorKind::Enumerate(err) => Some(err),
+            ErrorKind::BuildWalker(err) => Some(err),
+            ErrorKind::Walk(err) => Some(err),
         }
     }
 }
@@ -238,16 +276,24 @@ impl From<crate::io::FromFileError> for Error {
     }
 }
 
-impl From<EnumerateError> for Error {
-    fn from(err: EnumerateError) -> Self {
+impl From<BuildWalkerError> for Error {
+    fn from(err: BuildWalkerError) -> Self {
         match err.kind {
             // avoid nesting this error to present a cleaner backtrace
-            EnumerateErrorKind::PackageInMonorepoRoot(path) => Self {
+            BuildWalkerErrorKind::PackageInMonorepoRoot(path) => Self {
                 kind: ErrorKind::PackageInMonorepoRoot(path),
             },
             _ => Self {
-                kind: ErrorKind::Enumerate(err),
+                kind: ErrorKind::BuildWalker(err),
             },
+        }
+    }
+}
+
+impl From<WalkError> for Error {
+    fn from(err: WalkError) -> Self {
+        Self {
+            kind: ErrorKind::Walk(err),
         }
     }
 }
@@ -265,7 +311,9 @@ pub enum ErrorKind {
     #[non_exhaustive]
     FromFile(crate::io::FromFileError),
     #[non_exhaustive]
-    Enumerate(EnumerateError),
+    BuildWalker(BuildWalkerError),
+    #[non_exhaustive]
+    Walk(WalkError),
 }
 
 /// Enumerate source code files used by the TypeScript compiler during
@@ -313,17 +361,15 @@ where
             // DISCUSS: what's the deal with transitive deps if enumerate is point and shoot?
             let transitive_internal_dependencies_inclusive = {
                 // Enumerate internal dependencies (exclusive)
-                let mut packages = package_manifest
+                package_manifest
                     .transitive_internal_dependency_package_names_exclusive(
                         &package_manifests_by_package_name,
-                    );
-                // Make this list inclusive of the target package
-                packages.push(&package_manifest);
-                packages
+                    )
+                    // Make this list inclusive of the target package
+                    .chain(iter::once(package_manifest))
             };
 
             Ok(transitive_internal_dependencies_inclusive
-                .iter()
                 .map(|package_manifest| {
                     let path = package_manifest.path();
                     TypescriptPackage {
@@ -355,8 +401,9 @@ where
             .map(|package| -> Result<(_, _), Error> {
                 // This relies on the assumption that tsconfig.json is always the name of the tsconfig file
                 let tsconfig = &monorepo_root.as_ref().join(package.tsconfig_file);
-                let mut included_files =
-                    tsconfig_includes_estimate(monorepo_root.as_ref(), tsconfig)?;
+                let mut included_files: Vec<_> =
+                    tsconfig_includes_estimate(monorepo_root.as_ref(), tsconfig)?
+                        .collect::<Result<_, _>>()?;
                 included_files.sort_unstable();
                 Ok((package.scoped_package_name, included_files))
             })
