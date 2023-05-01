@@ -14,7 +14,9 @@ use typescript_tools::{configuration_file::ConfigurationFile, monorepo_manifest}
 use crate::{
     io::read_json_from_file,
     path::{self, *},
-    typescript_package::{PackageManifest, TypescriptPackage},
+    typescript_package::{
+        FromTypescriptConfigFileError, PackageManifest, TypescriptConfigFile, TypescriptPackage,
+    },
 };
 
 #[derive(Debug, Default, Deserialize)]
@@ -298,6 +300,18 @@ impl From<WalkError> for Error {
     }
 }
 
+impl From<FromTypescriptConfigFileError> for Error {
+    fn from(err: FromTypescriptConfigFileError) -> Self {
+        let kind = match err {
+            FromTypescriptConfigFileError::PackageInMonorepoRoot(path) => {
+                ErrorKind::PackageInMonorepoRoot(path)
+            }
+            FromTypescriptConfigFileError::FromFile(err) => ErrorKind::FromFile(err),
+        };
+        Self { kind }
+    }
+}
+
 #[derive(Debug)]
 pub enum ErrorKind {
     #[non_exhaustive]
@@ -322,14 +336,14 @@ pub enum ErrorKind {
 ///
 /// - `monorepo_root` may be an absolute path
 /// - `tsconfig_files` should be relative paths from the monorepo root
-pub fn tsconfig_includes_by_package_name<P, Q>(
+pub fn tsconfig_includes_by_package_name<P, T>(
     monorepo_root: P,
-    tsconfig_files: Q,
+    tsconfig_files: T,
 ) -> Result<HashMap<String, Vec<PathBuf>>, Error>
 where
     P: AsRef<Path> + Sync,
-    Q: IntoIterator,
-    Q::Item: AsRef<Path>,
+    T: IntoIterator,
+    T::Item: AsRef<Path>,
 {
     // REFACTOR: avoid duplicated code in estimate.rs and exact.rs
     let lerna_manifest =
@@ -343,19 +357,14 @@ where
     > = tsconfig_files
         .into_iter()
         .map(|tsconfig_file| -> Result<Vec<TypescriptPackage>, Error> {
-            let package_manifest_file = tsconfig_file
-                .as_ref()
-                .parent()
-                .expect("No package should exist in the monorepo root")
-                .join("package.json");
-            let PackageManifest {
-                name: package_manifest_name,
-            } = read_json_from_file(&monorepo_root.as_ref().join(package_manifest_file))?;
+            let tsconfig_file: TypescriptConfigFile =
+                monorepo_root.as_ref().join(tsconfig_file.as_ref()).into();
+            let package_manifest: PackageManifest = (&tsconfig_file).try_into()?;
             let package_manifest = package_manifests_by_package_name
-                .get(&package_manifest_name)
+                .get(&package_manifest.name)
                 .expect(&format!(
                     "tsconfig {:?} should belong to a package in the lerna monorepo",
-                    tsconfig_file.as_ref()
+                    &tsconfig_file
                 ));
 
             // DISCUSS: what's the deal with transitive deps if enumerate is point and shoot?
