@@ -12,9 +12,11 @@ use rayon::prelude::*;
 use typescript_tools::{configuration_file::ConfigurationFile, monorepo_manifest};
 
 use crate::{
-    io::read_json_from_file,
     path::{self, is_monorepo_file, remove_relative_path_prefix_from_absolute_path},
-    typescript_package::{PackageManifest, TypescriptPackage},
+    typescript_package::{
+        FromTypescriptConfigFileError, PackageInMonorepoRootError, PackageManifest,
+        PackageManifestFile, TypescriptConfigFile, TypescriptPackage,
+    },
 };
 
 #[derive(Debug)]
@@ -39,6 +41,9 @@ impl Display for EnumerateError {
                 write!(f, "command output included invalid UTF-8")
             }
             EnumerateErrorKind::StripPrefix(_) => write!(f, "unable to manipulate file path"),
+            EnumerateErrorKind::PackageInMonorepoRoot(path) => {
+                write!(f, "unexpected package in monorepo root: {:?}", path)
+            }
         }
     }
 }
@@ -53,6 +58,7 @@ impl std::error::Error for EnumerateError {
             } => None,
             EnumerateErrorKind::InvalidUtf8(err) => Some(err),
             EnumerateErrorKind::StripPrefix(err) => Some(err),
+            EnumerateErrorKind::PackageInMonorepoRoot(_) => None,
         }
     }
 }
@@ -67,6 +73,8 @@ pub enum EnumerateErrorKind {
     InvalidUtf8(string::FromUtf8Error),
     #[non_exhaustive]
     StripPrefix(path::StripPrefixError),
+    #[non_exhaustive]
+    PackageInMonorepoRoot(PathBuf),
 }
 
 impl From<string::FromUtf8Error> for EnumerateErrorKind {
@@ -85,13 +93,17 @@ impl From<path::StripPrefixError> for EnumerateErrorKind {
 /// the files included in the compilation process.
 fn tsconfig_includes_exact(
     monorepo_root: &Path,
-    tsconfig: &Path,
+    tsconfig: &TypescriptConfigFile,
 ) -> Result<Vec<PathBuf>, EnumerateError> {
     (|| {
         let child = Command::new("tsc")
             .arg("--listFilesOnly")
             .arg("--project")
-            .arg(tsconfig)
+            .arg(
+                tsconfig
+                    .package_directory(monorepo_root)
+                    .map_err(|err| EnumerateErrorKind::PackageInMonorepoRoot(err.0))?,
+            )
             .output()
             .map_err(EnumerateErrorKind::Command)?;
         if child.status.code() != Some(0) {
@@ -185,6 +197,26 @@ impl From<EnumerateError> for Error {
     }
 }
 
+impl From<FromTypescriptConfigFileError> for Error {
+    fn from(err: FromTypescriptConfigFileError) -> Self {
+        let kind = match err {
+            FromTypescriptConfigFileError::PackageInMonorepoRoot(path) => {
+                ErrorKind::PackageInMonorepoRoot(path)
+            }
+            FromTypescriptConfigFileError::FromFile(err) => ErrorKind::FromFile(err),
+        };
+        Self { kind }
+    }
+}
+
+impl From<PackageInMonorepoRootError> for Error {
+    fn from(err: PackageInMonorepoRootError) -> Self {
+        Self {
+            kind: ErrorKind::PackageInMonorepoRoot(err.0),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub enum ErrorKind {
     #[non_exhaustive]
@@ -228,19 +260,15 @@ where
     > = tsconfig_files
         .into_iter()
         .map(|tsconfig_file| -> Result<Vec<TypescriptPackage>, Error> {
-            let package_manifest_file = tsconfig_file
-                .as_ref()
-                .parent()
-                .ok_or_else(|| ErrorKind::PackageInMonorepoRoot(tsconfig_file.as_ref().to_owned()))?
-                .join("package.json");
-            let PackageManifest {
-                name: package_manifest_name,
-            } = read_json_from_file(&monorepo_root.as_ref().join(package_manifest_file))?;
+            let tsconfig_file: TypescriptConfigFile =
+                monorepo_root.as_ref().join(tsconfig_file.as_ref()).into();
+            let package_manifest: PackageManifest = (&tsconfig_file).try_into()?;
+
             let package_manifest = package_manifests_by_package_name
-                .get(&package_manifest_name)
+                .get(&package_manifest.name)
                 .expect(&format!(
                     "tsconfig {:?} should belong to a package in the lerna monorepo",
-                    tsconfig_file.as_ref()
+                    tsconfig_file
                 ));
 
             let transitive_internal_dependencies_inclusive = {
@@ -254,19 +282,20 @@ where
             };
 
             Ok(transitive_internal_dependencies_inclusive
-                .map(|package_manifest| {
-                    let path = package_manifest.path();
-                    TypescriptPackage {
-                        scoped_package_name: package_manifest.contents.name.clone(),
-                        tsconfig_file: path
-                            .parent()
-                            .ok_or_else(|| ErrorKind::PackageInMonorepoRoot(path.to_owned()))
-                            // REFACTOR: avoid unwrap
-                            .expect("No package should exist in the monorepo root")
-                            .join("tsconfig.json"),
-                    }
-                })
-                .collect())
+                .map(
+                    |package_manifest| -> Result<_, PackageInMonorepoRootError> {
+                        let package_manifest_file =
+                            PackageManifestFile::from(package_manifest.path());
+                        let tsconfig_file: TypescriptConfigFile =
+                            package_manifest_file.try_into()?;
+                        let typescript_package = TypescriptPackage {
+                            scoped_package_name: package_manifest.contents.name.clone(),
+                            tsconfig_file,
+                        };
+                        Ok(typescript_package)
+                    },
+                )
+                .collect::<Result<_, _>>()?)
         })
         // REFACTOR: avoid intermediate allocations
         .collect::<Result<Vec<_>, _>>()?
@@ -282,12 +311,12 @@ where
     let included_files: HashMap<String, Vec<PathBuf>> =
         transitive_internal_dependency_tsconfigs_inclusive_to_enumerate
             .into_par_iter()
-            .map(|package| -> Result<(_, _), Error> {
+            .map(|typescript_package| -> Result<(_, _), Error> {
                 // This relies on the assumption that tsconfig.json is always the name of the tsconfig file
-                let tsconfig = &monorepo_root.as_ref().join(package.tsconfig_file);
+                let tsconfig = &typescript_package.tsconfig_file;
                 let mut included_files = tsconfig_includes_exact(monorepo_root.as_ref(), tsconfig)?;
                 included_files.sort_unstable();
-                Ok((package.scoped_package_name, included_files))
+                Ok((typescript_package.scoped_package_name, included_files))
             })
             .collect::<Result<HashMap<_, _>, _>>()?;
 

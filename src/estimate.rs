@@ -15,7 +15,8 @@ use crate::{
     io::read_json_from_file,
     path::{self, *},
     typescript_package::{
-        FromTypescriptConfigFileError, PackageManifest, TypescriptConfigFile, TypescriptPackage,
+        FromTypescriptConfigFileError, PackageInMonorepoRootError, PackageManifest,
+        PackageManifestFile, TypescriptConfigFile, TypescriptPackage,
     },
 };
 
@@ -165,16 +166,19 @@ pub enum WalkErrorKind {
 /// matching include globs.
 fn tsconfig_includes_estimate<'a, 'b>(
     monorepo_root: &'a Path,
-    tsconfig_file: &'b Path,
+    tsconfig_file: &'b TypescriptConfigFile,
 ) -> Result<impl Iterator<Item = Result<PathBuf, WalkError>>, BuildWalkerError> {
     let monorepo_root = monorepo_root.to_owned();
-    let tsconfig_file = tsconfig_file.to_owned();
-    let package_directory = tsconfig_file.parent().ok_or_else(|| BuildWalkerError {
-        kind: BuildWalkerErrorKind::PackageInMonorepoRoot(tsconfig_file.to_owned()),
-    })?;
+    let package_directory = tsconfig_file
+        .package_directory(&monorepo_root)
+        .map_err(|kind| BuildWalkerError {
+            kind: BuildWalkerErrorKind::PackageInMonorepoRoot(kind.0),
+        })?;
     let tsconfig: TypescriptConfig =
-        read_json_from_file(&tsconfig_file).map_err(|err| BuildWalkerError {
-            kind: BuildWalkerErrorKind::IO(err),
+        read_json_from_file(monorepo_root.join(tsconfig_file.as_path())).map_err(|err| {
+            BuildWalkerError {
+                kind: BuildWalkerErrorKind::IO(err),
+            }
         })?;
 
     let whitelisted_file_extensions = tsconfig.whitelisted_file_extensions();
@@ -312,6 +316,14 @@ impl From<FromTypescriptConfigFileError> for Error {
     }
 }
 
+impl From<PackageInMonorepoRootError> for Error {
+    fn from(err: PackageInMonorepoRootError) -> Self {
+        Self {
+            kind: ErrorKind::PackageInMonorepoRoot(err.0),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub enum ErrorKind {
     #[non_exhaustive]
@@ -364,9 +376,10 @@ where
                 .get(&package_manifest.name)
                 .expect(&format!(
                     "tsconfig {:?} should belong to a package in the lerna monorepo",
-                    &tsconfig_file
+                    tsconfig_file
                 ));
 
+            // RESUME: replace this comment with something sensible
             // DISCUSS: what's the deal with transitive deps if enumerate is point and shoot?
             let transitive_internal_dependencies_inclusive = {
                 // Enumerate internal dependencies (exclusive)
@@ -379,19 +392,20 @@ where
             };
 
             Ok(transitive_internal_dependencies_inclusive
-                .map(|package_manifest| {
-                    let path = package_manifest.path();
-                    TypescriptPackage {
-                        scoped_package_name: package_manifest.contents.name.clone(),
-                        tsconfig_file: path
-                            .parent()
-                            .ok_or_else(|| ErrorKind::PackageInMonorepoRoot(path.to_owned()))
-                            // REFACTOR: avoid unwrap
-                            .expect("No package should exist in the monorepo root")
-                            .join("tsconfig.json"),
-                    }
-                })
-                .collect())
+                .map(
+                    |package_manifest| -> Result<_, PackageInMonorepoRootError> {
+                        let package_manifest_file =
+                            PackageManifestFile::from(package_manifest.path());
+                        let tsconfig_file: TypescriptConfigFile =
+                            package_manifest_file.try_into()?;
+                        let typescript_package = TypescriptPackage {
+                            scoped_package_name: package_manifest.contents.name.clone(),
+                            tsconfig_file,
+                        };
+                        Ok(typescript_package)
+                    },
+                )
+                .collect::<Result<_, _>>()?)
         })
         // REFACTOR: avoid intermediate allocations
         .collect::<Result<Vec<_>, _>>()?
@@ -407,14 +421,14 @@ where
     let included_files: HashMap<String, Vec<PathBuf>> =
         transitive_internal_dependency_tsconfigs_inclusive_to_enumerate
             .into_par_iter()
-            .map(|package| -> Result<(_, _), Error> {
+            .map(|typescript_package| -> Result<(_, _), Error> {
                 // This relies on the assumption that tsconfig.json is always the name of the tsconfig file
-                let tsconfig = &monorepo_root.as_ref().join(package.tsconfig_file);
+                let tsconfig_file = &typescript_package.tsconfig_file;
                 let mut included_files: Vec<_> =
-                    tsconfig_includes_estimate(monorepo_root.as_ref(), tsconfig)?
+                    tsconfig_includes_estimate(monorepo_root.as_ref(), tsconfig_file)?
                         .collect::<Result<_, _>>()?;
                 included_files.sort_unstable();
-                Ok((package.scoped_package_name, included_files))
+                Ok((typescript_package.scoped_package_name, included_files))
             })
             .collect::<Result<HashMap<_, _>, _>>()?;
 
