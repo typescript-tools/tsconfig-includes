@@ -1,8 +1,8 @@
 {
-  "name": "bar",
+  "name": "@typescript-tools/bar",
   "version": "0.0.0",
   "private": true,
   "dependencies": {
-    "foo": "0.0.0"
+    "@typescript-tools/foo": "0.0.0"
   }
 }

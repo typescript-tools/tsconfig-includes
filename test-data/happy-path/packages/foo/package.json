@@ -1,5 +1,5 @@
 {
-  "name": "foo",
+  "name": "@typescript-tools/foo",
   "version": "0.0.0",
   "private": true
 }

@@ -37,12 +37,12 @@ fn list_grouped_exact_happy_path_dependencies_bar() {
     check(
         &["packages/bar/tsconfig.json"],
         &[
-            ("bar", "packages/bar/src/bin.ts"),
-            ("bar", "packages/bar/src/index.ts"),
-            ("bar", "packages/bar/src/legacy.js"),
-            ("foo", "packages/foo/src/data.json"),
-            ("foo", "packages/foo/src/index.ts"),
-            ("foo", "packages/foo/src/lib.ts"),
+            ("@typescript-tools/bar", "packages/bar/src/bin.ts"),
+            ("@typescript-tools/bar", "packages/bar/src/index.ts"),
+            ("@typescript-tools/bar", "packages/bar/src/legacy.js"),
+            ("@typescript-tools/foo", "packages/foo/src/data.json"),
+            ("@typescript-tools/foo", "packages/foo/src/index.ts"),
+            ("@typescript-tools/foo", "packages/foo/src/lib.ts"),
         ],
     );
 }
@@ -52,9 +52,9 @@ fn list_grouped_exact_happy_path_dependencies_foo() {
     check(
         &["packages/foo/tsconfig.json"],
         &[
-            ("foo", "packages/foo/src/data.json"),
-            ("foo", "packages/foo/src/index.ts"),
-            ("foo", "packages/foo/src/lib.ts"),
+            ("@typescript-tools/foo", "packages/foo/src/data.json"),
+            ("@typescript-tools/foo", "packages/foo/src/index.ts"),
+            ("@typescript-tools/foo", "packages/foo/src/lib.ts"),
         ],
     );
 }
@@ -64,12 +64,12 @@ fn list_grouped_exact_happy_path_dependencies_foo_and_bar() {
     check(
         &["packages/foo/tsconfig.json", "packages/bar/tsconfig.json"],
         &[
-            ("bar", "packages/bar/src/bin.ts"),
-            ("bar", "packages/bar/src/index.ts"),
-            ("bar", "packages/bar/src/legacy.js"),
-            ("foo", "packages/foo/src/data.json"),
-            ("foo", "packages/foo/src/index.ts"),
-            ("foo", "packages/foo/src/lib.ts"),
+            ("@typescript-tools/bar", "packages/bar/src/bin.ts"),
+            ("@typescript-tools/bar", "packages/bar/src/index.ts"),
+            ("@typescript-tools/bar", "packages/bar/src/legacy.js"),
+            ("@typescript-tools/foo", "packages/foo/src/data.json"),
+            ("@typescript-tools/foo", "packages/foo/src/index.ts"),
+            ("@typescript-tools/foo", "packages/foo/src/lib.ts"),
         ],
     );
 }
