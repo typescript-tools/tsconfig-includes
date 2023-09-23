@@ -44,6 +44,9 @@ impl Display for EnumerateError {
             EnumerateErrorKind::PackageInMonorepoRoot(path) => {
                 write!(f, "unexpected package in monorepo root: {:?}", path)
             }
+            EnumerateErrorKind::Canonicalize { path, inner: _ } => {
+                write!(f, "unable to canonicalize path {:?}", path)
+            }
         }
     }
 }
@@ -59,6 +62,7 @@ impl std::error::Error for EnumerateError {
             EnumerateErrorKind::InvalidUtf8(err) => Some(err),
             EnumerateErrorKind::StripPrefix(err) => Some(err),
             EnumerateErrorKind::PackageInMonorepoRoot(_) => None,
+            EnumerateErrorKind::Canonicalize { path: _, inner } => Some(inner),
         }
     }
 }
@@ -75,6 +79,11 @@ pub enum EnumerateErrorKind {
     StripPrefix(path::StripPrefixError),
     #[non_exhaustive]
     PackageInMonorepoRoot(PathBuf),
+    #[non_exhaustive]
+    Canonicalize {
+        path: PathBuf,
+        inner: std::io::Error,
+    },
 }
 
 impl From<string::FromUtf8Error> for EnumerateErrorKind {
@@ -96,12 +105,19 @@ fn tsconfig_includes_exact(
     tsconfig: &TypescriptConfigFile,
 ) -> Result<Vec<PathBuf>, EnumerateError> {
     (|| {
+        let monorepo_root = std::fs::canonicalize(monorepo_root).map_err(|inner| {
+            EnumerateErrorKind::Canonicalize {
+                path: monorepo_root.to_path_buf(),
+                inner,
+            }
+        })?;
+
         let child = Command::new("tsc")
             .arg("--listFilesOnly")
             .arg("--project")
             .arg(
                 tsconfig
-                    .package_directory(monorepo_root)
+                    .package_directory(&monorepo_root)
                     .map_err(|err| EnumerateErrorKind::PackageInMonorepoRoot(err.0))?,
             )
             .output()
@@ -119,9 +135,9 @@ fn tsconfig_includes_exact(
             // Drop the empty newline at the end of stdout
             .filter(|s| !s.is_empty())
             .map(PathBuf::from)
-            .filter(|path| is_monorepo_file(monorepo_root, path))
+            .filter(|path| is_monorepo_file(&monorepo_root, path))
             .map(|source_file| {
-                remove_relative_path_prefix_from_absolute_path(monorepo_root, &source_file)
+                remove_relative_path_prefix_from_absolute_path(&monorepo_root, &source_file)
             })
             .collect::<Result<_, _>>()?;
 
