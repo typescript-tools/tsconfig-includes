@@ -101,3 +101,12 @@ pub(crate) fn is_monorepo_file(monorepo_root: &Path, file: &Path) -> bool {
     }
     false
 }
+
+pub(crate) fn is_child_of_node_modules(file: &Path) -> bool {
+    for ancestor in file.ancestors() {
+        if ancestor.ends_with("node_modules") {
+            return true;
+        }
+    }
+    false
+}

@@ -12,7 +12,10 @@ use rayon::prelude::*;
 use typescript_tools::{configuration_file::ConfigurationFile, monorepo_manifest};
 
 use crate::{
-    path::{self, is_monorepo_file, remove_relative_path_prefix_from_absolute_path},
+    path::{
+        self, is_child_of_node_modules, is_monorepo_file,
+        remove_relative_path_prefix_from_absolute_path,
+    },
     typescript_package::{
         FromTypescriptConfigFileError, PackageInMonorepoRootError, PackageManifest,
         PackageManifestFile, TypescriptConfigFile, TypescriptPackage,
@@ -136,6 +139,7 @@ fn tsconfig_includes_exact(
             .filter(|s| !s.is_empty())
             .map(PathBuf::from)
             .filter(|path| is_monorepo_file(&monorepo_root, path))
+            .filter(|path| !is_child_of_node_modules(path))
             .map(|source_file| {
                 remove_relative_path_prefix_from_absolute_path(&monorepo_root, &source_file)
             })
